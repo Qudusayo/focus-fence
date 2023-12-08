@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  width: 360px;
+  /* height: 600px; */
+  font-family: "Kumbh Sans";
+  font-size: 90%;
+}
+
+.Popup {
+  background-color: #000000;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  max-height: 600px;
+  /* border: 2px solid purple; */
+  /* overflow: hidden; */
+}
+
+/* .AppFull {
+  } */
+
+img {
+  width: 40px;
+  height: 40px;
+}
