@@ -2,11 +2,13 @@ import React, { useEffect } from "react";
 import { FiPlus, FiPaperclip } from "react-icons/fi";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import { DropEvent, FileRejection, useDropzone } from "react-dropzone";
+import { useLocation } from "react-router-dom";
 import { useCallback, useState } from "react";
 import { cn } from "../lib/utils";
 import Switcher from "./Switcher";
 import Divider from "./Divider";
 import Logo from "./Logo";
+import Schedule from "./Schedule";
 
 export default function ControlPanel({
   mode,
@@ -40,13 +42,35 @@ export default function ControlPanel({
     image: "",
     textContent: "",
   });
+  const location = useLocation();
+
+  useEffect(() => {
+    let searchParams = new URLSearchParams(location.search);
+    let mode = searchParams.get("mode");
+    if (mode) {
+      setState(mode as "blocklist" | "whitelist");
+    }
+  }, [location]);
 
   useEffect(() => {
     if (redirectPage.active) {
-      if (personalizedBlockedPage.active)
+      if (personalizedBlockedPage.active) {
         setPersonalizedBlockedPage((personalizedVals) => {
           return { ...personalizedVals, active: false };
         });
+      }
+      // Update the storage to set Active value to true and active url to google.com
+      chrome.storage.sync.set(
+        {
+          [`${mode}_redirect`]: {
+            active: true,
+            redirect: "https://www.google.com",
+          },
+        },
+        function () {
+          console.log("Value is set to " + redirectPage.redirect);
+        }
+      );
     }
   }, [redirectPage]);
   useEffect(() => {
@@ -67,7 +91,41 @@ export default function ControlPanel({
         setList(blacklist);
       }
     });
+
+    chrome.storage.sync.get([`${mode}_redirect`], function (result) {
+      let redirectObj = result[`${mode}_redirect`];
+
+      if (redirectObj && redirectObj.active) {
+        setRedirectPage((prev) => {
+          return {
+            ...prev,
+            active: true,
+            redirect: redirectObj.redirect,
+          };
+        });
+      }
+    });
   }, []);
+
+  const controlRedirectUrl = () => {
+    setRedirectPage((prev) => {
+      return {
+        ...prev,
+        active: !prev.active,
+      };
+    });
+    chrome.storage.sync.set(
+      {
+        [`${mode}_redirect`]: {
+          active: !redirectPage.active,
+          redirect: redirectPage.redirect,
+        },
+      },
+      function () {
+        console.log("Value is set to " + redirectPage.redirect);
+      }
+    );
+  };
 
   const removeURLFromBlacklist = (url: string) => {
     chrome.storage.sync.get([`${mode}_blacklist`], function (result) {
@@ -93,7 +151,7 @@ export default function ControlPanel({
         <h2 className="text-center text-4xl font-bold">
           {mode[0].toUpperCase() + mode.slice(1)} Mode
         </h2>
-        <Switcher11 setState={setState} />
+        <Switcher11 setState={setState} state={state} />
       </div>
       <div className="border border-[#ffffff1f] bg-[#ffffff08] rounded-3xl p-10 flex flex-col gap-8">
         <div className="grid grid-cols-2 gap-8">
@@ -111,20 +169,34 @@ export default function ControlPanel({
         <Divider />
         <div>
           <div>
-            <h2 className="font-bold text-2xl">Your blocklist:</h2>
+            <h2 className="font-bold text-2xl">
+              Your {state === "whitelist" ? "whitelist" : "blocklist"}:
+            </h2>
             <span className="text-sm">
-              Add or remove websites from your blocklist.
+              Add or remove websites from your{" "}
+              {state === "whitelist" ? "whitelist" : "blocklist"}.
             </span>
           </div>
           <div className="flex gap-4 my-6">
             <input
               type="text"
               className="border border-[#808080] rounded-2xl text-base px-4 py-3 flex-grow outline-none bg-transparent"
-              placeholder="Type the website you would like to block."
+              placeholder={`Type the website you would like to ${
+                state === "whitelist" ? "allow" : "block"
+              }.`}
             />
-            <button className="bg-gradient-to-r from-[#DD0043] to-[#FF7C60] px-5 py-3 rounded-2xl w-max flex items-center gap-2">
+            <button
+              className={cn(
+                "px-5 py-3 rounded-2xl w-max flex items-center gap-2",
+                state === "blocklist" &&
+                  "bg-gradient-to-r from-[#DD0043] to-[#FF7C60]",
+                state === "whitelist" && "bg-white text-black"
+              )}
+            >
               <FiPlus />
-              <span>Add to Blocklist</span>
+              <span>
+                Add to {state === "whitelist" ? "Whitelist" : "Blocklist"}
+              </span>
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4 max-h-[345px] overflow-auto">
@@ -159,60 +231,7 @@ export default function ControlPanel({
           </div>
         )}
         <Divider />
-        <div className="flex flex-col gap-8">
-          <div className="grid grid-cols-2 gap-8">
-            <div>
-              <h2 className="font-bold text-2xl">Schedule</h2>
-              <span className="text-sm">
-                Set a schedule for the blacklist be turned on and off
-                automatically.
-              </span>
-            </div>
-            <div className="flex items-center justify-end">
-              {/* <Switcher /> */}
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-[#ffffff0d] border border-[#ffffff0d] rounded-2xl col-span-1 px-6 py-4 text-center">
-              <h2 className="font-bold mb-4">Set schedule:</h2>
-              <div className="flex gap-1">
-                <div>
-                  <TimeSelector />
-                  <span className="font-light text-sm">start</span>
-                </div>
-                <div>
-                  <TimeSelector />
-                  <span className="font-light text-sm">finish</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-[#ffffff0d] border border-[#ffffff0d] rounded-2xl col-span-1 px-6 py-4 text-center">
-              <h2 className="font-bold mb-4">Set interval:</h2>
-              <div className="flex gap-1">
-                <div>
-                  <TimeSelector />
-                  <span className="font-light text-sm">start</span>
-                </div>
-                <div>
-                  <TimeSelector />
-                  <span className="font-light text-sm">finish</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-[#ffffff0d] border border-[#ffffff0d] rounded-2xl col-span-2 px-6 py-4 text-center">
-              <h2 className="font-bold mb-4">Select days of the week:</h2>
-              <div className="flex items-center justify-between">
-                <WeekDaySelector day="Sun" />
-                <WeekDaySelector day="Mon" />
-                <WeekDaySelector day="Tue" />
-                <WeekDaySelector day="Wed" />
-                <WeekDaySelector day="Thu" />
-                <WeekDaySelector day="Fri" />
-                <WeekDaySelector day="Sat" />
-              </div>
-            </div>
-          </div>
-        </div>
+        <Schedule />
         <Divider />
         <div className="flex flex-col gap-8">
           <div className="grid grid-cols-2 gap-8">
@@ -227,29 +246,15 @@ export default function ControlPanel({
             <div className="flex items-center justify-end">
               <Switcher
                 isActive={redirectPage.active}
-                setIsActive={() => {
-                  setRedirectPage((prev) => {
-                    return {
-                      ...prev,
-                      active: !prev.active,
-                    };
-                  });
-                }}
+                setIsActive={controlRedirectUrl}
               />
             </div>
           </div>
-          {/* <div>
-            <input
-              type="text"
-              className="border border-[#808080] rounded-2xl text-base px-4 py-3 w-full outline-none bg-transparent"
-              placeholder="Type the website you would like to block."
-            />
-          </div> */}
           <div className="relative text-gray-600 focus-within:text-gray-400 w-full">
             <input
               type="text"
               className="border border-[#808080] rounded-2xl text-base px-4 py-3 w-full outline-none bg-transparent pr-16 pl-4 focus:outline-none"
-              placeholder="Type your message here..."
+              placeholder="Type the website you'll like to redirect to here..."
             />
             <span className="absolute inset-y-0 right-0 flex items-center pr-2">
               <button
@@ -341,85 +346,35 @@ const SiteLabel = ({
   );
 };
 
-const WeekDaySelector = ({ day }: { day: string }) => {
-  const [isActive, setIsActive] = useState(false);
-  return (
-    <button
-      className={cn(
-        "rounded-full border border-[#ffffff1f] w-10 h-10 flex items-center justify-center text-sm cursor-pointer",
-        isActive ? "bg-[#35C867]" : "bg-[#ffffff1f]"
-      )}
-      onClick={() => setIsActive((active) => !active)}
-    >
-      {day}
-    </button>
-  );
-};
-
-const TimeSelector = () => {
-  return (
-    <div className="flex text-xs bg-[#ffffff0d] border border-[#ffffff0f] rounded-xl p-2 flex-1">
-      <select
-        name=""
-        id=""
-        className="outline-none appearance-none bg-transparent"
-      >
-        <option value="01">01</option>
-        <option value="02">02</option>
-        <option value="03">03</option>
-        <option value="04">04</option>
-        <option value="05">05</option>
-        <option value="06">06</option>
-        <option value="07">07</option>
-        <option value="08">08</option>
-        <option value="09">09</option>
-        <option value="10">10</option>
-        <option value="11">10</option>
-        <option value="12">12</option>
-      </select>
-      <span className="">:</span>
-      <select
-        name=""
-        id=""
-        className="outline-none appearance-none bg-transparent"
-      >
-        {[...Array(60)].map((_, index) => {
-          return (
-            <option key={index} value={index}>
-              {index.toString().padStart(2, "0")}
-            </option>
-          );
-        })}
-      </select>
-      <select
-        name=""
-        id=""
-        className="outline-none appearance-none bg-transparent"
-      >
-        <option value="AM">AM</option>
-        <option value="PM">PM</option>
-      </select>
-    </div>
-  );
-};
-
 const Switcher11 = ({
+  state,
   setState,
 }: {
+  state: "blocklist" | "whitelist";
   setState: React.Dispatch<React.SetStateAction<"blocklist" | "whitelist">>;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
 
-  useEffect(() => {
-    if (isChecked) {
+  // useEffect(() => {
+  //   if (isChecked) {
+  //     setState("whitelist");
+  //   } else {
+  //     setState("blocklist");
+  //   }
+
+  //   if (state === "whitelist") {
+  //     setIsChecked(true);
+  //   } else {
+  //     setIsChecked(false);
+  //   }
+  // }, [isChecked, state]);
+
+  const handleCheckboxChange = () => {
+    if (state === "blocklist") {
       setState("whitelist");
     } else {
       setState("blocklist");
     }
-  }, [isChecked]);
-
-  const handleCheckboxChange = () => {
-    setIsChecked(!isChecked);
   };
 
   return (
@@ -433,7 +388,7 @@ const Switcher11 = ({
         />
         <span
           className={`block space-x-[6px] rounded-lg py-3 px-[18px] text-sm font-medium w-32 text-center ${
-            !isChecked
+            state === "blocklist"
               ? "text-primary bg-gradient-to-r from-[#DD0043] to-[#FF7C60]"
               : "text-body-color"
           }`}
@@ -442,7 +397,7 @@ const Switcher11 = ({
         </span>
         <span
           className={`block space-x-[6px] rounded-lg py-3 px-[18px] text-sm font-medium w-32 text-center ${
-            isChecked ? "text-black bg-white" : "text-body-color"
+            state === "whitelist" ? "text-black bg-white" : "text-body-color"
           }`}
         >
           Whitelist

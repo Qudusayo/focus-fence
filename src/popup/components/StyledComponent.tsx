@@ -187,6 +187,11 @@ const Tab = styled.div`
       border-radius: 16px;
       color: white;
       background: linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%);
+
+      &-white {
+        color: #000000;
+        background: #ffffff;
+      }
     }
   }
 `;
@@ -198,7 +203,7 @@ const Line = styled.div`
   margin: 0 8px;
 `;
 
-const ControlButton = styled.button`
+const ControlButton = styled.button<{ whitelist?: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -211,13 +216,17 @@ const ControlButton = styled.button`
   align-items: center;
   justify-content: center;
   background-color: ${config.colors.bg};
-  color: ${config.colors.white};
+  color: ${(props) =>
+    props.whitelist ? config.colors.black : config.colors.white};
   font-family: "Kumbh Sans";
   font-size: 0.9em;
   cursor: pointer;
-  transition: all 0.3s linear;
+  transition: all 0.1s linear;
   cursor: pointer;
-  background: linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%);
+  background: ${(props) =>
+    props.whitelist
+      ? "#ffffff"
+      : "linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%)"};
 `;
 
 export {

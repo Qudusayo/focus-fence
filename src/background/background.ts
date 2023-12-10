@@ -14,16 +14,30 @@ function checkForBlackList(tabId, changeInfo, tab) {
       // Get elemnets of [activeTab + "_blacklist"] from storage
       chrome.storage.sync.get([`${currentMode}_blacklist`], function (result) {
         const blacklist = result[`${currentMode}_blacklist`];
-
         if (blacklist && blacklist?.length > 0) {
           const blockedSite = blacklist.find((site) => {
-            console.log(site);
             return changeInfo.url.includes(site?.url);
           })?.url;
 
           if (changeInfo.url.includes(blockedSite)) {
-            const extensionURL = `chrome-extension://${chrome.runtime.id}/blocked.html?site=${blockedSite}`;
-            chrome.tabs.update(tabId, { url: extensionURL });
+            chrome.storage.sync.get(
+              [`${currentMode}_redirect`],
+              function (result) {
+                let redirectObj = result[`${currentMode}_redirect`];
+
+                const extensionURL = `chrome-extension://${chrome.runtime.id}/blocked.html?site=${blockedSite}`;
+                chrome.tabs.update(tabId, { url: extensionURL });
+
+                if (redirectObj && redirectObj.active) {
+                  setTimeout(
+                    () =>
+                      chrome.tabs.update(tabId, { url: redirectObj.redirect }),
+                    1000
+                  );
+                  return;
+                }
+              }
+            );
           }
         }
       });

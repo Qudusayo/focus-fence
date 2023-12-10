@@ -7,6 +7,8 @@ import {
   ControlButton,
 } from "./StyledComponent";
 import { PiGearSix } from "react-icons/pi";
+import Image from "./Image";
+import "../../assets/tailwind.css";
 // import getDayOfWeekFromDate from "../functions/getDayOfWeekFromDate";
 
 export default function Content() {
@@ -16,6 +18,12 @@ export default function Content() {
   );
   const [currentUrl, setCurrentUrl] = useState("");
   const [faviconUrl, setFaviconUrl] = useState("");
+  const [categoryList, setCategoryList] = useState<
+    {
+      url: string;
+      faviconUrl: string;
+    }[]
+  >([]);
 
   useEffect(() => {
     // Get the active tab in the current window
@@ -39,8 +47,6 @@ export default function Content() {
     });
 
     chrome.storage.sync.get(["currentMode"], function (result) {
-      console.log({ mode: result.currentMode });
-      console.log(result);
       if (result.currentMode) setActiveTab(result.currentMode);
     });
   }, []);
@@ -51,6 +57,23 @@ export default function Content() {
       // chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       //   chrome.tabs.sendMessage(tabs[0].id, { message: "reload_page" });
       // });
+    });
+
+    chrome.storage.sync.get(["currentMode"], function (result) {
+      const currentMode = result.currentMode;
+
+      if (currentMode) {
+        setActiveTab(currentMode);
+
+        // Get elemnets of [activeTab + "_blacklist"] from storage
+        chrome.storage.sync.get(
+          [`${currentMode}_${statusTab}`],
+          function (result) {
+            const blacklist = result[`${currentMode}_${statusTab}`];
+            setCategoryList(blacklist ?? []);
+          }
+        );
+      }
     });
   }, [activeTab, statusTab]);
 
@@ -126,13 +149,22 @@ export default function Content() {
           Blacklist
         </div>
         <div
-          className={statusTab === "whitelist" ? "active" : ""}
+          className={statusTab === "whitelist" ? "active-white" : ""}
           onClick={() => setStatusTab("whitelist")}
         >
           Whitelist
         </div>
       </Tab>
-      <ContentContainer h={"150px"} bg="#fff" favIconUrl={faviconUrl}>
+      <ContentContainer
+        h={"150px"}
+        bg="#fff"
+        style={
+          {
+            // background: "linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%)",
+          }
+        }
+        favIconUrl={faviconUrl}
+      >
         <header>Visiting Now</header>
         <h2>{currentUrl}</h2>
         <ControlButton onClick={addToBlacklist}>
@@ -145,21 +177,34 @@ export default function Content() {
           Your {statusTab === "blacklist" ? "Blacklist" : "Whitelist"}:
         </header>
         <ContentBlock>
-          <p
-            style={{
-              textAlign: "center",
-              color: "#999",
-              fontSize: "14px",
-              margin: "0",
-              padding: "0",
-              marginTop: "40px",
-            }}
-          >
-            ----- {statusTab === "blacklist" ? "Blacklist" : "Whitelist"} is
-            empty -----
-          </p>
+          {!categoryList.length ? (
+            <p
+              style={{
+                textAlign: "center",
+                color: "#999",
+                fontSize: "14px",
+                margin: "0",
+                padding: "0",
+                marginTop: "40px",
+              }}
+            >
+              ----- {statusTab === "blacklist" ? "Blacklist" : "Whitelist"} is
+              empty -----
+            </p>
+          ) : (
+            <div>
+              {categoryList.map((list) => {
+                return (
+                  <div key={list.url} className="flex items-center gap-2 my-2">
+                    <Image src={list.faviconUrl} />
+                    <span>{list.url}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </ContentBlock>
-        <ControlButton>
+        <ControlButton whitelist={statusTab === "whitelist"}>
           <PiGearSix size={15} />
           <span>
             Edit {statusTab === "blacklist" ? "Blacklist" : "Whitelist"}
