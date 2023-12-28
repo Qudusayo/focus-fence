@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { cn } from "../lib/utils";
+import Switcher from "./Switcher";
 
 export default function Schedule() {
   return (
@@ -12,13 +13,13 @@ export default function Schedule() {
           </span>
         </div>
         <div className="flex items-center justify-end">
-          {/* <Switcher /> */}
+          <Switcher isActive={false} setIsActive={() => {}} />
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid lg:grid-cols-4 grid-cols-2 gap-3">
         <div className="bg-[#ffffff0d] border border-[#ffffff0d] rounded-2xl col-span-1 px-6 py-4 text-center">
           <h2 className="font-bold mb-4">Set schedule:</h2>
-          <div className="flex gap-1">
+          <div className="flex items-center justify-around gap-1">
             <div>
               <TimeSelector />
               <span className="font-light text-sm">start</span>
@@ -31,7 +32,7 @@ export default function Schedule() {
         </div>
         <div className="bg-[#ffffff0d] border border-[#ffffff0d] rounded-2xl col-span-1 px-6 py-4 text-center">
           <h2 className="font-bold mb-4">Set interval:</h2>
-          <div className="flex gap-1">
+          <div className="flex items-center justify-around gap-1">
             <div>
               <TimeSelector />
               <span className="font-light text-sm">start</span>

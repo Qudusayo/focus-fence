@@ -14,8 +14,12 @@
     "storage",
     "nativeMessaging",
     "activeTab",
-    "webNavigation"
+    "webNavigation",
+    "webRequest",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
+  "host_permissions": ["<all_urls>"],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",

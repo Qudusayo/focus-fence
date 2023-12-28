@@ -6,6 +6,7 @@ import {
   Tab,
   ControlButton,
 } from "./StyledComponent";
+import { FiLock } from "react-icons/fi";
 import { PiGearSix } from "react-icons/pi";
 import Image from "./Image";
 import "../../assets/tailwind.css";
@@ -24,6 +25,8 @@ export default function Content() {
       faviconUrl: string;
     }[]
   >([]);
+  const [isBlockedUrl, setIsBlockedUrl] = useState(false);
+  const [isChromeUrl, setIsChromeUrl] = useState(false);
 
   useEffect(() => {
     // Get the active tab in the current window
@@ -37,8 +40,21 @@ export default function Content() {
 
         if (url.includes("?site=")) {
           baseDomain = url.split("?site=")[1];
+          setIsBlockedUrl(true);
         } else {
+          if (
+            url.includes("chrome://") ||
+            url.includes("chrome-extension://") ||
+            url.includes("chrome-search://") ||
+            url.includes("chrome-untrusted://") ||
+            url.includes("chrome-native://") ||
+            url.includes("chrome-distiller://") ||
+            url.includes("chrome-error://") ||
+            url.includes("chrome-newtab://")
+          )
+            setIsChromeUrl(true);
           baseDomain = extractBaseDomain(url);
+          setIsBlockedUrl(false);
         }
         setCurrentUrl(baseDomain);
 
@@ -47,17 +63,28 @@ export default function Content() {
     });
 
     chrome.storage.sync.get(["currentMode"], function (result) {
-      if (result.currentMode) setActiveTab(result.currentMode);
+      if (result.currentMode) {
+        let mode = result.currentMode;
+        console.log(`${mode}_state`);
+        setActiveTab(mode);
+        chrome.storage.sync.get([`${mode}_state`], function (res) {
+          console.log(res);
+          if (res[`${mode}_state`]) {
+            console.log(res[`${mode}_state`]);
+            setStatusTab(res[`${mode}_state`] ?? "blacklist");
+          }
+        });
+      }
     });
   }, []);
 
   useEffect(() => {
     // Get the current active tab to chrome storage
-    chrome.storage.sync.set({ currentMode: activeTab }, function () {
-      // chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      //   chrome.tabs.sendMessage(tabs[0].id, { message: "reload_page" });
-      // });
-    });
+    // chrome.storage.sync.set({ currentMode: activeTab }, function () {
+    //   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    //     chrome.tabs.sendMessage(tabs[0].id, { message: "reload_page" });
+    //   });
+    // });
 
     chrome.storage.sync.get(["currentMode"], function (result) {
       const currentMode = result.currentMode;
@@ -75,7 +102,7 @@ export default function Content() {
         );
       }
     });
-  }, [activeTab, statusTab]);
+  }, [statusTab]);
 
   // Function to extract base domain from URL
   const extractBaseDomain = (url: string) => {
@@ -88,6 +115,12 @@ export default function Content() {
     chrome.storage.sync.get([activeTab + "_blacklist"], function (result) {
       const blacklist = result[activeTab + "_blacklist"];
       if (blacklist && blacklist.length > 0) {
+        // Check if the current url is already in the blacklist
+        const isExist = blacklist.find((item) => item.url === currentUrl);
+        if (isExist) {
+          return;
+        }
+
         blacklist.push({
           url: currentUrl,
           faviconUrl: faviconUrl,
@@ -98,6 +131,7 @@ export default function Content() {
             console.log("Blacklist is set to " + blacklist);
           }
         );
+        setCategoryList(blacklist);
       } else {
         chrome.storage.sync.set(
           {
@@ -110,12 +144,45 @@ export default function Content() {
           },
           function () {
             console.log("Blacklist is set to " + blacklist);
+            setCategoryList([
+              {
+                url: currentUrl,
+                faviconUrl: faviconUrl,
+              },
+            ]);
           }
         );
       }
+      setIsBlockedUrl(true);
     });
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       chrome.tabs.sendMessage(tabs[0].id, { message: "reload_page" });
+    });
+  };
+
+  const updateActiveTab = (tab: "fun" | "work" | "study") => {
+    setActiveTab(tab);
+    chrome.storage.sync.set({ currentMode: tab }, function () {
+      // chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      //   chrome.tabs.sendMessage(tabs[0].id, { message: "reload_page" });
+      // });
+      chrome.storage.sync.get([`${tab}_${statusTab}`], function (result) {
+        const blacklist = result[`${tab}_${statusTab}`];
+        setCategoryList(blacklist ?? []);
+      });
+    });
+  };
+
+  const updateStatusTab = (tab: "blacklist" | "whitelist") => {
+    setStatusTab(tab);
+    chrome.storage.sync.set({ [`${activeTab}_state`]: tab });
+  };
+
+  const editPage = () => {
+    const extensionUrl = chrome.runtime.getURL("options.html");
+    const queryTab = statusTab === "blacklist" ? "blacklist" : "whitelist";
+    chrome.tabs.create({
+      url: extensionUrl + `#/${activeTab}?mode=${queryTab}`,
     });
   };
 
@@ -124,19 +191,19 @@ export default function Content() {
       <Tab>
         <div
           className={activeTab === "fun" ? "active" : ""}
-          onClick={() => setActiveTab("fun")}
+          onClick={() => updateActiveTab("fun")}
         >
           Fun
         </div>
         <div
           className={activeTab === "work" ? "active" : ""}
-          onClick={() => setActiveTab("work")}
+          onClick={() => updateActiveTab("work")}
         >
           Work
         </div>
         <div
           className={activeTab === "study" ? "active" : ""}
-          onClick={() => setActiveTab("study")}
+          onClick={() => updateActiveTab("study")}
         >
           Study
         </div>
@@ -144,33 +211,51 @@ export default function Content() {
       <Tab>
         <div
           className={statusTab === "blacklist" ? "active" : ""}
-          onClick={() => setStatusTab("blacklist")}
+          onClick={() => updateStatusTab("blacklist")}
         >
           Blacklist
         </div>
         <div
           className={statusTab === "whitelist" ? "active-white" : ""}
-          onClick={() => setStatusTab("whitelist")}
+          onClick={() => updateStatusTab("whitelist")}
         >
           Whitelist
         </div>
       </Tab>
-      <ContentContainer
-        h={"150px"}
-        bg="#fff"
-        style={
-          {
-            // background: "linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%)",
+      {!isChromeUrl && (
+        <ContentContainer
+          h={"130px"}
+          bg="#fff"
+          p="0px"
+          style={
+            {
+              // background: "linear-gradient(40deg, #dd0043 11.81%, #ff7c60 86.17%)",
+            }
           }
-        }
-        favIconUrl={faviconUrl}
-      >
-        <header>Visiting Now</header>
-        <h2>{currentUrl}</h2>
-        <ControlButton onClick={addToBlacklist}>
-          Add this website to blacklist
-        </ControlButton>
-      </ContentContainer>
+          favIconUrl={faviconUrl}
+          className="relative"
+        >
+          <div className="w-[85%] mx-auto py-2">
+            <header>Visiting Now</header>
+            <h2>{currentUrl}</h2>
+          </div>
+          {isBlockedUrl ? (
+            <div className="bg-[#00000054] text-center py-5 absolute bottom-0 w-full text-base flex gap-2 items-center justify-center">
+              <FiLock size={18} />
+              <span className="text-white">Website blocked</span>
+            </div>
+          ) : (
+            <ControlButton
+              onClick={addToBlacklist}
+              className="w-[93%] mx-auto mt-4 flex gap-2 items-center justify-center"
+            >
+              <FiLock size={18} />
+              <span>Add this website to blacklist</span>
+            </ControlButton>
+          )}
+          q
+        </ContentContainer>
+      )}
 
       <ContentContainer h={"200px"}>
         <header>
@@ -204,7 +289,10 @@ export default function Content() {
             </div>
           )}
         </ContentBlock>
-        <ControlButton whitelist={statusTab === "whitelist"}>
+        <ControlButton
+          whitelist={statusTab === "whitelist"}
+          onClick={() => editPage()}
+        >
           <PiGearSix size={15} />
           <span>
             Edit {statusTab === "blacklist" ? "Blacklist" : "Whitelist"}

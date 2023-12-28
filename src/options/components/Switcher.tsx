@@ -19,13 +19,13 @@ const Switcher = ({
           onChange={setIsActive}
         />
         <span
-          className={`slider mr-3 flex h-[33px] w-[65px] items-center rounded-full p-1 duration-200 ${
-            isChecked ? "bg-green-500" : "bg-[#CCCCCE]"
+          className={`slider mr-3 flex h-[32px] w-[55px] items-center rounded-full p-1 duration-200 ${
+            isChecked ? "bg-green-500" : "bg-[#FFFFFF1F]"
           }`}
         >
           <span
             className={`dot h-[24px] w-[24px] rounded-full bg-white duration-200 ${
-              isChecked ? "translate-x-[2.05rem]" : ""
+              isChecked ? "translate-x-[2.05rem]" : "translate-x-[.1rem]"
             }`}
           ></span>
         </span>
@@ -33,7 +33,7 @@ const Switcher = ({
           <span
             className={cn(
               "text-sm font-bold",
-              isChecked ? "pl-2" : "pl-[2rem]"
+              isChecked ? "pl-2" : "pl-[2.5rem]"
             )}
           >
             {isChecked ? "On" : "Off"}

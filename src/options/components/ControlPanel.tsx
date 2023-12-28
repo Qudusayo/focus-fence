@@ -1,32 +1,30 @@
 import React, { useEffect } from "react";
 import { FiPlus, FiPaperclip } from "react-icons/fi";
 import { RiDeleteBin6Line } from "react-icons/ri";
-import { DropEvent, FileRejection, useDropzone } from "react-dropzone";
 import { useLocation } from "react-router-dom";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { cn } from "../lib/utils";
 import Switcher from "./Switcher";
 import Divider from "./Divider";
 import Logo from "./Logo";
 import Schedule from "./Schedule";
+import { extractDomain, isValidUrl, notify } from "../functions";
+import { FaPlus } from "react-icons/fa6";
+import Dropzone from "react-dropzone";
+
+interface IvisitedSites {
+  [key: string]: {
+    count: number;
+    faviconUrl: string;
+  };
+}
 
 export default function ControlPanel({
   mode,
 }: {
   mode: "work" | "study" | "fun";
 }) {
-  const [state, setState] = useState<"blocklist" | "whitelist">("blocklist");
-  const onDrop = useCallback(
-    <T extends File>(
-      acceptedFiles: T[],
-      fileRejections: FileRejection[],
-      event: DropEvent
-    ) => {
-      // Do something with the files
-    },
-    []
-  );
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+  const [state, setState] = useState<"blacklist" | "whitelist">("blacklist");
   const [list, setList] = useState<
     {
       faviconUrl: string;
@@ -42,15 +40,21 @@ export default function ControlPanel({
     image: "",
     textContent: "",
   });
+  const [visitedSites, setVisitedSites] = useState<IvisitedSites[]>([]);
+  const [redirectURL, setRedirectURL] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const location = useLocation();
 
   useEffect(() => {
     let searchParams = new URLSearchParams(location.search);
     let mode = searchParams.get("mode");
     if (mode) {
-      setState(mode as "blocklist" | "whitelist");
+      setState(mode as "blacklist" | "whitelist");
     }
   }, [location]);
+
+  const [linkInput, setLinkInput] = useState("");
+  const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
     if (redirectPage.active) {
@@ -59,18 +63,6 @@ export default function ControlPanel({
           return { ...personalizedVals, active: false };
         });
       }
-      // Update the storage to set Active value to true and active url to google.com
-      chrome.storage.sync.set(
-        {
-          [`${mode}_redirect`]: {
-            active: true,
-            redirect: "https://www.google.com",
-          },
-        },
-        function () {
-          console.log("Value is set to " + redirectPage.redirect);
-        }
-      );
     }
   }, [redirectPage]);
   useEffect(() => {
@@ -83,31 +75,72 @@ export default function ControlPanel({
   }, [personalizedBlockedPage]);
 
   useEffect(() => {
-    chrome.storage.sync.get([`${mode}_blacklist`], function (result) {
-      const blacklist = result[`${mode}_blacklist`];
+    // chrome.storage.sync.get([`${mode}_blacklist`], function (result) {
+    //   const blacklist = result[`${mode}_blacklist`];
 
-      if (blacklist && blacklist?.length > 0) {
-        console.log(blacklist);
-        setList(blacklist);
+    //   if (blacklist && blacklist?.length > 0) {
+    //     console.log(blacklist);
+    //     setList(blacklist);
+    //   }
+    // });
+
+    // Get mode state and use it to set the state and the list
+    chrome.storage.sync.get([`${mode}_state`], function (result) {
+      const state = result[`${mode}_state`];
+      if (state) {
+        setState(state);
       }
+
+      chrome.storage.sync.get([`${mode}_${state}`], function (result) {
+        const list = result[`${mode}_${state}`];
+        if (list && list?.length > 0) {
+          setList(list);
+        }
+      });
     });
 
     chrome.storage.sync.get([`${mode}_redirect`], function (result) {
       let redirectObj = result[`${mode}_redirect`];
 
-      if (redirectObj && redirectObj.active) {
+      if (redirectObj) {
         setRedirectPage((prev) => {
           return {
             ...prev,
-            active: true,
+            active: redirectObj.active,
             redirect: redirectObj.redirect,
           };
         });
+        setRedirectURL(redirectObj.redirect);
+      }
+    });
+
+    // Get most visited websites
+    chrome.storage.sync.get([`${mode}_visitedSites`], function (result) {
+      const visitedSites = result[`${mode}_visitedSites`];
+      if (visitedSites && Object.keys(visitedSites).length > 0) {
+        setVisitedSites(visitedSites);
+      }
+    });
+
+    // Get current mode
+    chrome.storage.sync.get(["currentMode"], function (result) {
+      const currentMode = result.currentMode;
+      if (currentMode) {
+        if (currentMode === mode) {
+          setIsActive(true);
+        } else {
+          setIsActive(false);
+        }
       }
     });
   }, []);
 
   const controlRedirectUrl = () => {
+    if (redirectPage.redirect === "") {
+      notify("Please set a redirect URL first", "error");
+      return;
+    }
+
     setRedirectPage((prev) => {
       return {
         ...prev,
@@ -127,20 +160,178 @@ export default function ControlPanel({
     );
   };
 
-  const removeURLFromBlacklist = (url: string) => {
+  const removeURLFromList = (url: string) => {
+    chrome.storage.sync.get([`${mode}_${state}`], function (result) {
+      const list = result[`${mode}_${state}`];
+
+      if (list && list?.length > 0) {
+        const newList = list.filter((item: any) => item.url !== url);
+        setList(newList);
+        chrome.storage.sync.set({ [`${mode}_${state}`]: newList }, function () {
+          notify(`${url} is removed from your ${state}`, "success");
+        });
+      }
+    });
+  };
+
+  const addURLToBlacklist = (url: string) => {
     chrome.storage.sync.get([`${mode}_blacklist`], function (result) {
       const blacklist = result[`${mode}_blacklist`];
 
       if (blacklist && blacklist?.length > 0) {
-        const newBlacklist = blacklist.filter((item: any) => item.url !== url);
-        console.log(newBlacklist);
-        setList(newBlacklist);
+        // Check if the current url is already in the blacklist
+        const isExist = blacklist.find((item: any) => item.url === url);
+        if (isExist) {
+          notify(`${url} is already in your blacklist`);
+          return;
+        }
+
+        // Get the favicon of the url from statistics
+        const faviconUrl = visitedSites[url].faviconUrl;
+
+        blacklist.push({
+          url: url,
+          faviconUrl: faviconUrl ? faviconUrl : "",
+        });
         chrome.storage.sync.set(
-          { [`${mode}_blacklist`]: newBlacklist },
+          { [`${mode}_blacklist`]: blacklist },
           function () {
-            console.log("Value is set to " + newBlacklist);
+            notify(`${url} is added to your blacklist`, "success");
           }
         );
+        setList(blacklist);
+      } else {
+        chrome.storage.sync.set(
+          {
+            [`${mode}_blacklist`]: [
+              {
+                url: url,
+                faviconUrl: "",
+              },
+            ],
+          },
+          function () {
+            notify(`${url} is added to your blacklist`, "success");
+            setList([
+              {
+                url: url,
+                faviconUrl: "",
+              },
+            ]);
+          }
+        );
+      }
+    });
+  };
+
+  const saveRedirectUrl = () => {
+    if (
+      !(redirectURL.startsWith("http://") || redirectURL.startsWith("https://"))
+    ) {
+      notify("URL must start with http:// or https://", "error");
+      return;
+    }
+    if (isValidUrl(redirectURL)) {
+      setRedirectPage((prev) => {
+        return {
+          ...prev,
+          redirect: redirectURL,
+        };
+      });
+      chrome.storage.sync.set(
+        {
+          [`${mode}_redirect`]: {
+            active: redirectPage.active,
+            redirect: redirectURL,
+          },
+        },
+        function () {
+          notify(`Redirect URL (${redirectURL}) is saved`, "success");
+        }
+      );
+    } else {
+      notify("Please enter a valid URL", "error");
+    }
+  };
+
+  const addSiteToList = () => {
+    if (
+      !(linkInput.startsWith("http://") || linkInput.startsWith("https://"))
+    ) {
+      notify("URL must start with http:// or https://", "error");
+      return;
+    }
+
+    if (isValidUrl(linkInput)) {
+      chrome.storage.sync.get([`${mode}_${state}`], function (result) {
+        const blacklist = result[`${mode}_${state}`];
+        if (blacklist && blacklist.length > 0) {
+          // Check if the current url is already in the blacklist
+          const isExist = blacklist.find(
+            (item: any) => item.url === extractDomain(linkInput)
+          );
+          if (isExist) {
+            return;
+          }
+
+          blacklist.push({
+            url: extractDomain(linkInput),
+            faviconUrl: "",
+          });
+          chrome.storage.sync.set(
+            { [`${mode}_${state}`]: blacklist },
+            function () {
+              notify(`${linkInput} is added to your ${list}`, "success");
+            }
+          );
+          setList(blacklist);
+        } else {
+          chrome.storage.sync.set(
+            {
+              [`${mode}_${state}`]: [
+                {
+                  url: extractDomain(linkInput),
+                  faviconUrl: "",
+                },
+              ],
+            },
+            function () {
+              notify(`${linkInput} is added to your ${list}`, "success");
+              setList([
+                {
+                  url: extractDomain(linkInput),
+                  faviconUrl: "",
+                },
+              ]);
+            }
+          );
+        }
+      });
+    } else {
+      notify("Please enter a valid URL", "error");
+    }
+  };
+
+  const modeActiveHandler = () => {
+    setIsActive((active) => !active);
+    if (!isActive) {
+      chrome.storage.sync.set({ currentMode: mode });
+    } else {
+      chrome.storage.sync.set({ currentMode: "" });
+    }
+  };
+
+  const activeStateHandler = (state: "blacklist" | "whitelist") => {
+    setState(state);
+    chrome.storage.sync.set({ [`${mode}_state`]: state });
+
+    chrome.storage.sync.get([`${mode}_${state}`], function (result) {
+      const list = result[`${mode}_${state}`];
+
+      if (list && list?.length > 0) {
+        setList(list);
+      } else {
+        setList([]);
       }
     });
   };
@@ -151,7 +342,7 @@ export default function ControlPanel({
         <h2 className="text-center text-4xl font-bold">
           {mode[0].toUpperCase() + mode.slice(1)} Mode
         </h2>
-        <Switcher11 setState={setState} state={state} />
+        <Switcher11 setState={activeStateHandler} state={state} />
       </div>
       <div className="border border-[#ffffff1f] bg-[#ffffff08] rounded-3xl p-10 flex flex-col gap-8">
         <div className="grid grid-cols-2 gap-8">
@@ -163,18 +354,18 @@ export default function ControlPanel({
             </span>
           </div>
           <div className="flex items-center justify-end">
-            {/* <Switcher /> */}
+            <Switcher isActive={isActive} setIsActive={modeActiveHandler} />
           </div>
         </div>
         <Divider />
         <div>
           <div>
             <h2 className="font-bold text-2xl">
-              Your {state === "whitelist" ? "whitelist" : "blocklist"}:
+              Your {state === "whitelist" ? "whitelist" : "blacklist"}:
             </h2>
             <span className="text-sm">
               Add or remove websites from your{" "}
-              {state === "whitelist" ? "whitelist" : "blocklist"}.
+              {state === "whitelist" ? "whitelist" : "blacklist"}.
             </span>
           </div>
           <div className="flex gap-4 my-6">
@@ -184,34 +375,39 @@ export default function ControlPanel({
               placeholder={`Type the website you would like to ${
                 state === "whitelist" ? "allow" : "block"
               }.`}
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
             />
             <button
               className={cn(
                 "px-5 py-3 rounded-2xl w-max flex items-center gap-2",
-                state === "blocklist" &&
+                state === "blacklist" &&
                   "bg-gradient-to-r from-[#DD0043] to-[#FF7C60]",
                 state === "whitelist" && "bg-white text-black"
               )}
+              onClick={addSiteToList}
             >
               <FiPlus />
               <span>
-                Add to {state === "whitelist" ? "Whitelist" : "Blocklist"}
+                Add to {state === "whitelist" ? "Whitelist" : "blacklist"}
               </span>
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4 max-h-[345px] overflow-auto">
-            {list.map((item) => {
+            {list.map((item, i) => {
               return (
                 <SiteLabel
+                  key={i}
                   url={item.url}
+                  type={state === "blacklist" ? "revoked" : "allowed"}
                   faviconUrl={item.faviconUrl}
-                  removeURLFromBlacklist={removeURLFromBlacklist}
+                  callback={removeURLFromList}
                 />
               );
             })}
           </div>
         </div>
-        {state === "blocklist" && (
+        {state === "blacklist" && (
           <div className="flex flex-col gap-6">
             <div>
               <h2 className="font-bold text-2xl">Most visited websites:</h2>
@@ -221,12 +417,19 @@ export default function ControlPanel({
               </span>
             </div>
             <div className="grid grid-cols-2 gap-4 max-h-[200px] overflow-auto">
-              {/* <SiteLabel url="facebook.com" />
-            <SiteLabel url="instagram.com" />
-            <SiteLabel url="tiktok.com" />
-            <SiteLabel url="9gag.com" />
-            <SiteLabel url="twitter.com" />
-            <SiteLabel url="x.com" /> */}
+              {Object.keys(visitedSites)
+                .sort((a, b) => visitedSites[b].count - visitedSites[a].count)
+                .map((item, i) => {
+                  return (
+                    <SiteLabel
+                      key={i}
+                      url={item}
+                      type="visited"
+                      faviconUrl={visitedSites[item].faviconUrl}
+                      callback={addURLToBlacklist}
+                    />
+                  );
+                })}
             </div>
           </div>
         )}
@@ -239,7 +442,7 @@ export default function ControlPanel({
               <h2 className="font-bold text-2xl">Redirect Page</h2>
               <span className="text-sm">
                 Redirect to somewhere when you try to access some website that
-                is on your blocklist. This doesn&apos;t work with the block page
+                is on your blacklist. This doesn&apos;t work with the block page
                 bellow.
               </span>
             </div>
@@ -255,11 +458,14 @@ export default function ControlPanel({
               type="text"
               className="border border-[#808080] rounded-2xl text-base px-4 py-3 w-full outline-none bg-transparent pr-16 pl-4 focus:outline-none"
               placeholder="Type the website you'll like to redirect to here..."
+              value={redirectURL}
+              onChange={(e) => setRedirectURL(e.target.value)}
             />
-            <span className="absolute inset-y-0 right-0 flex items-center pr-2">
+            <span className="absolute inset-y-0 right-0 flex items-center p-2">
               <button
-                type="submit"
-                className="p-1 focus:outline-none focus:shadow-outline"
+                type="button"
+                className="p-1 focus:outline-none focus:shadow-outline text-white bg-gradient-to-r from-[#DD0043] to-[#FF7C60] px-5 py-2 rounded-xl w-max flex items-center gap-2"
+                onClick={saveRedirectUrl}
               >
                 Save
               </button>
@@ -273,7 +479,7 @@ export default function ControlPanel({
               <h2 className="font-bold text-2xl">Personalized Block Page</h2>
               <span className="text-sm">
                 Shows a personalized image and some text of your preference when
-                you try to access some whebsite that is in your blocklist.
+                you try to access some whebsite that is in your blacklist.
               </span>
             </div>
             <div className="flex items-center justify-end">
@@ -290,29 +496,62 @@ export default function ControlPanel({
               />
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-4">
-            <div
-              {...getRootProps()}
-              className="bg-[#ffffff0d] border border-[#ffffff0d] flex items-center justify-center px-8 rounded-2xl cursor-pointer"
-            >
-              <input {...getInputProps()} />
-              {isDragActive ? (
-                <p>Drop the image here ...</p>
-              ) : (
-                <div className="text-center">
-                  <FiPaperclip size={28} className="m-auto" />
-                  <p className="font-light text-xs">
-                    Click here to upload or drag an image
-                  </p>
+          <Dropzone
+            onDrop={(acceptedFiles) => {
+              if (acceptedFiles.length > 1) {
+                notify("Please upload only one image", "error");
+                return;
+              }
+              const file = acceptedFiles[0];
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = () => {
+                const base64 = reader.result;
+                setPersonalizedBlockedPage((prev) => {
+                  return {
+                    ...prev,
+                    image: base64 as string,
+                  };
+                });
+              };
+              reader.onerror = function (error) {
+                console.log("Error: ", error);
+              };
+            }}
+          >
+            {({ getRootProps, getInputProps, isDragActive }) => (
+              <div className="grid grid-cols-4 gap-4">
+                <div
+                  {...getRootProps()}
+                  className="bg-[#ffffff0d] border border-[#ffffff0d] flex items-center justify-center px-8 rounded-2xl cursor-pointer"
+                  style={
+                    image
+                      ? {
+                          backgroundImage: `url(${URL.createObjectURL(image)})`,
+                        }
+                      : {}
+                  }
+                >
+                  <input {...getInputProps()} />
+                  {isDragActive ? (
+                    <p>Drop the image here ...</p>
+                  ) : (
+                    <div className="text-center">
+                      <FiPaperclip size={28} className="m-auto" />
+                      <p className="font-light text-xs">
+                        Click here to upload or drag an image
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <textarea
-              className="border border-[#808080] rounded-2xl px-4 py-3 w-full outline-none bg-transparent resize-none col-span-3"
-              rows={5}
-              placeholder="Type the phrase you would like to see in the block page."
-            />
-          </div>
+                <textarea
+                  className="border border-[#808080] rounded-2xl px-4 py-3 w-full outline-none bg-transparent resize-none col-span-3"
+                  rows={5}
+                  placeholder="Type the phrase you would like to see in the block page."
+                />
+              </div>
+            )}
+          </Dropzone>
         </div>
       </div>
     </div>
@@ -322,11 +561,13 @@ export default function ControlPanel({
 const SiteLabel = ({
   url,
   faviconUrl,
-  removeURLFromBlacklist,
+  type,
+  callback,
 }: {
   url: string;
   faviconUrl: string;
-  removeURLFromBlacklist: (url: string) => void;
+  type: "visited" | "revoked" | "allowed";
+  callback: (url: string) => void;
 }) => {
   return (
     <div className="bg-[#ffffff0d] border border-[#ffffff0f] flex items-center gap-4 py-2 px-4 rounded-xl h-14">
@@ -334,14 +575,25 @@ const SiteLabel = ({
       <Logo
         src={faviconUrl}
         alt=""
+        type={type}
         className="w-8 h-8 object-cover object-center"
       />
+
       <span className="flex-grow">{url}</span>
-      <RiDeleteBin6Line
-        size={20}
-        className="cursor-pointer hover:text-red-500 transition-colors"
-        onClick={() => removeURLFromBlacklist(url)}
-      />
+      {type === "visited" && (
+        <FaPlus
+          size={20}
+          className="cursor-pointer"
+          onClick={() => callback(url)}
+        />
+      )}
+      {(type === "revoked" || type === "allowed") && (
+        <RiDeleteBin6Line
+          size={20}
+          className="cursor-pointer hover:text-red-500 transition-colors"
+          onClick={() => callback(url)}
+        />
+      )}
     </div>
   );
 };
@@ -350,30 +602,16 @@ const Switcher11 = ({
   state,
   setState,
 }: {
-  state: "blocklist" | "whitelist";
-  setState: React.Dispatch<React.SetStateAction<"blocklist" | "whitelist">>;
+  state: "blacklist" | "whitelist";
+  setState: (state: "blacklist" | "whitelist") => void;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
 
-  // useEffect(() => {
-  //   if (isChecked) {
-  //     setState("whitelist");
-  //   } else {
-  //     setState("blocklist");
-  //   }
-
-  //   if (state === "whitelist") {
-  //     setIsChecked(true);
-  //   } else {
-  //     setIsChecked(false);
-  //   }
-  // }, [isChecked, state]);
-
   const handleCheckboxChange = () => {
-    if (state === "blocklist") {
+    if (state === "blacklist") {
       setState("whitelist");
     } else {
-      setState("blocklist");
+      setState("blacklist");
     }
   };
 
@@ -388,7 +626,7 @@ const Switcher11 = ({
         />
         <span
           className={`block space-x-[6px] rounded-lg py-3 px-[18px] text-sm font-medium w-32 text-center ${
-            state === "blocklist"
+            state === "blacklist"
               ? "text-primary bg-gradient-to-r from-[#DD0043] to-[#FF7C60]"
               : "text-body-color"
           }`}

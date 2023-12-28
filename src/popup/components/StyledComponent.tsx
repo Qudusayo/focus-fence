@@ -15,10 +15,12 @@ const ContentContainer = styled.div<{
   h: string;
   bg?: string;
   favIconUrl?: string;
+  p?: string;
 }>`
   background-color: ${(props) => (props.bg ? props.bg : config.colors.bg)};
   color: ${config.colors.white};
-  padding: 1.25em;
+  /* padding: 1.25em; */
+  padding: ${(props) => (props.p ? props.p : "1.25em")};
   padding-top: 1em;
   border-radius: 1em;
   /* flex: 1; */

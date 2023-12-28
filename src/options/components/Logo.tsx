@@ -1,13 +1,15 @@
 import React, { useState } from "react";
+import { GrValidate, GrHistory } from "react-icons/gr";
 import { MdOutlineBlock } from "react-icons/md";
 
-const Logo = (
-  props: React.DetailedHTMLProps<
-    React.ImgHTMLAttributes<HTMLImageElement>,
-    HTMLImageElement
-  >
-) => {
-  const { src, alt, ...rest } = props;
+type LogoProps = React.DetailedHTMLProps<
+  React.ImgHTMLAttributes<HTMLImageElement>,
+  HTMLImageElement
+> & {
+  type: "visited" | "revoked" | "allowed";
+};
+const Logo = (props: LogoProps) => {
+  const { src, alt, type, ...rest } = props;
   const [SRC, setSrc] = useState<string>(src);
   const handleError = () => {
     setSrc("");
@@ -21,7 +23,11 @@ const Logo = (
       className="w-8 h-8 object-cover object-center"
     />
   ) : (
-    <MdOutlineBlock size={20} />
+    {
+      visited: <GrHistory size={20} />,
+      revoked: <MdOutlineBlock size={20} />,
+      allowed: <GrValidate size={20} />,
+    }[type]
   );
 };
 

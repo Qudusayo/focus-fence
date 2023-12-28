@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import Switcher from "../components/Switcher";
 import Layout from "../layout/Layout";
 
 export default function Settings() {
@@ -35,7 +34,7 @@ export default function Settings() {
               </h2>
               <span className="text-sm">
                 Enhance the difficulty to add websites to your whitelists,
-                remove websites from blocklist, change between whitelist and
+                remove websites from blacklist, change between whitelist and
                 blacklist etc. The higher the number, more captchas will be
                 requested before allowing the change. <br />
                 <br />
